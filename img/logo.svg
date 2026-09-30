@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="881" height="514" viewBox="360 143 881 514" role="img" aria-labelledby="title desc">
+  <title id="title">Argon2DotnetFast</title>
+  <desc id="desc">Three lanes of memory blocks ending in forward arrows, above the project name and the tagline Argon2 password hashing for .NET.</desc>
+  <g id="mark" transform="translate(648 175)">
+    <!-- Three lanes of memory blocks, with forward chevrons for speed. -->
+    <g fill="#8058D8">
+      <rect x="0" y="0" width="56" height="56" rx="5"/>
+      <rect x="72" y="0" width="56" height="56" rx="5"/>
+      <rect x="144" y="0" width="56" height="56" rx="5"/>
+      <rect x="0" y="72" width="56" height="56" rx="5"/>
+      <rect x="72" y="72" width="56" height="56" rx="5"/>
+      <rect x="144" y="72" width="56" height="56" rx="5"/>
+      <rect x="0" y="144" width="56" height="56" rx="5"/>
+      <rect x="72" y="144" width="56" height="56" rx="5"/>
+      <rect x="144" y="144" width="56" height="56" rx="5"/>
+    </g>
+    <g fill="#168A8A">
+      <path d="M216 0 H272 L304 28 L272 56 H216 L248 28 Z"/>
+      <path d="M216 72 H272 L304 100 L272 128 H216 L248 100 Z"/>
+      <path d="M216 144 H272 L304 172 L272 200 H216 L248 172 Z"/>
+    </g>
+  </g>
+  <text x="800" y="539" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="104" font-weight="600" letter-spacing="-3"><tspan fill="#8058D8">Argon2</tspan><tspan fill="#737F91">Dotnet</tspan><tspan fill="#168A8A">Fast</tspan></text>
+  <text x="800" y="617" text-anchor="middle" fill="#737F91" font-family="Segoe UI, sans-serif" font-size="36" font-weight="400" letter-spacing="0.5">Argon2 password hashing for .NET</text>
+</svg>

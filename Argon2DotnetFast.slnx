@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Argon2DotnetFast/Argon2DotnetFast.csproj" />
+  <Project Path="src/Argon2DotnetFast.Tests/Argon2DotnetFast.Tests.csproj" />
+  <Project Path="src/Argon2DotnetFast.CommonPasswords.Generator/Argon2DotnetFast.CommonPasswords.Generator.csproj" />
+</Solution>
