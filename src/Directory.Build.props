@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    Every project is signed with the same key, so the library's InternalsVisibleTo lines resolve:
+    the SDK adds $(PublicKey) to each one. The key is public on purpose; a strong name is an
+    identity for .NET Framework binding, not a signature anyone should trust.
+  -->
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)Argon2DotnetFast.snk</AssemblyOriginatorKeyFile>
+    <PublicKey>0024000004800000940000000602000000240000525341310004000001000100a96eaace287207e20486c35c112b465ea122afab4682dab2e761b9a938b1ec811456156c21462fea4d94b4f00b494f10f507f58026b09d4879ce7b4aa11f99d4d24639d398628746c62f0f72054fb4844b4732f19419417ddfdf025ea19935b4aaeb882c9c2171ce29dedfef2d330a63cf448a17b4bc8532b0140e1a6f46e3b7</PublicKey>
+  </PropertyGroup>
+
+  <!--
+    GitHub Actions sets CI=true, and only those builds are fully signed. A strong-name signature is
+    RSA over SHA-1, which OpenSSL refuses under Fedora's and RHEL's crypto policy, so local builds
+    are public-signed: the same identity and token, with no signature computed.
+  -->
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(CI)' != 'true'">
+    <PublicSign>true</PublicSign>
+  </PropertyGroup>
+</Project>

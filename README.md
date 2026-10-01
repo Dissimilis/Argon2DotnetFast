@@ -368,6 +368,8 @@ dotnet pack src/Argon2DotnetFast -c Release
 
 The `net8.0` command builds the tests for .NET 8 too, so they run on the .NET 8 runtime. The `netstandard2.0` command runs the .NET Standard 2.0 assembly on the .NET 10 runtime; it does not show that older runtimes work. Only that target depends on `System.Memory`.
 
+The assemblies are strong-named with `src/Argon2DotnetFast.snk`. A local build is public-signed: it has the same name and public key token as the published package, but no signature, because OpenSSL on Fedora and RHEL refuses the SHA-1 signature a strong name uses. Builds in GitHub Actions, which set `CI=true`, are fully signed, and the package on nuget.org comes from the release workflow. The version comes from the latest `vX.Y.Z` git tag.
+
 After changing the common-password list, regenerate its data and commit that on its own:
 
 ```bash

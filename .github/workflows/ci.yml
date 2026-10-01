@@ -1,0 +1,259 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        filter: tree:0
+
+    # The .NET 8 SDK brings the runtime the net8.0 test run needs.
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: global.json
+        dotnet-version: 8.0.x
+        cache: false
+
+    - name: Restore
+      run: dotnet restore Argon2DotnetFast.slnx
+
+    - name: Build
+      run: dotnet build Argon2DotnetFast.slnx -c Release --no-restore
+
+    - name: Test the net10.0 library
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release --no-build --blame-hang-timeout 300s
+
+    - name: Test the net8.0 library on the .NET 8 runtime
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=net8.0 --blame-hang-timeout 300s
+
+    - name: Test the netstandard2.0 library
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=netstandard2.0 --blame-hang-timeout 300s
+
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        filter: tree:0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: global.json
+        cache: false
+
+    - name: Pack
+      run: dotnet pack src/Argon2DotnetFast -c Release --output ./nupkgs
+
+    - name: Check package contents
+      run: |
+        set -e
+        pkg=$(ls ./nupkgs/Argon2DotnetFast.*.nupkg)
+        unzip -l "$pkg"
+        for f in README.md THIRD-PARTY-NOTICES.md icon.png \
+                 lib/net10.0/Argon2DotnetFast.dll lib/net10.0/Argon2DotnetFast.xml \
+                 lib/net8.0/Argon2DotnetFast.dll lib/net8.0/Argon2DotnetFast.xml \
+                 lib/netstandard2.0/Argon2DotnetFast.dll lib/netstandard2.0/Argon2DotnetFast.xml; do
+          unzip -l "$pkg" | grep -q " $f\$" || { echo "missing $f in package"; exit 1; }
+        done
+        # net8.0 and net10.0 must have no dependencies; netstandard2.0 needs System.Memory only.
+        unzip -p "$pkg" Argon2DotnetFast.nuspec > nuspec.xml
+        python3 - <<'EOF'
+        import re, sys
+        text = open("nuspec.xml", encoding="utf-8").read()
+        groups = dict(re.findall(r'<group targetFramework="([^"]+)"\s*/?>(.*?)(?=<group |</dependencies>)', text, re.S))
+        for tfm in ("net10.0", "net8.0"):
+            if tfm not in groups:
+                print(f"no {tfm} dependency group"); sys.exit(1)
+            if "<dependency " in groups[tfm]:
+                print(f"{tfm} package must have no dependencies"); sys.exit(1)
+        EOF
+
+    # Local builds are only public-signed, which leaves the signature blob zeroed.
+    - name: Check that every assembly carries a strong-name signature
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pkg = Get-ChildItem ./nupkgs -Filter 'Argon2DotnetFast.*.nupkg' | Select-Object -First 1
+        $zip = [IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+        try {
+          foreach ($entry in $zip.Entries | Where-Object FullName -like 'lib/*/Argon2DotnetFast.dll') {
+            $ms = [IO.MemoryStream]::new()
+            $stream = $entry.Open(); $stream.CopyTo($ms); $stream.Dispose()
+            $bytes = $ms.ToArray(); $ms.Position = 0
+            $pe = [Reflection.PortableExecutable.PEReader]::new($ms)
+            $dir = $pe.PEHeaders.CorHeader.StrongNameSignatureDirectory
+            $offset = 0
+            if ($dir.Size -eq 0 -or -not $pe.PEHeaders.TryGetDirectoryOffset($dir, [ref]$offset)) { throw "$($entry.FullName) has no strong-name signature" }
+            if (-not ($bytes[$offset..($offset + $dir.Size - 1)] | Where-Object { $_ -ne 0 })) { throw "$($entry.FullName) is only public-signed" }
+            "$($entry.FullName): signed"
+          }
+        } finally { $zip.Dispose() }
+
+  netstandard-consumer:
+    # Nothing else runs the netstandard2.0 asset on .NET Framework, where System.Memory and the
+    # strong name actually matter. Consume the packed library from .NET Framework 4.8.
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        filter: tree:0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: global.json
+        cache: false
+
+    - name: Pack, then hash and verify from .NET Framework 4.8
+      shell: bash
+      run: |
+        set -e
+        dotnet pack src/Argon2DotnetFast -c Release --output "$RUNNER_TEMP/feed"
+        pkg=$(ls "$RUNNER_TEMP"/feed/Argon2DotnetFast.*.nupkg | head -1)
+        version=$(basename "$pkg" .nupkg)
+        version=${version#Argon2DotnetFast.}
+        mkdir -p "$RUNNER_TEMP/ns20" && cd "$RUNNER_TEMP/ns20"
+        cat > ns20.csproj <<PROJ
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <OutputType>Exe</OutputType>
+            <TargetFramework>net48</TargetFramework>
+            <LangVersion>latest</LangVersion>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="Argon2DotnetFast" Version="$version" />
+          </ItemGroup>
+        </Project>
+        PROJ
+        cat > nuget.config <<CFG
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <add key="local" value="$RUNNER_TEMP/feed" />
+          </packageSources>
+        </configuration>
+        CFG
+        cat > Program.cs <<'PROG'
+        using System;
+        using System.Linq;
+        using Argon2DotnetFast;
+
+        static class Program
+        {
+            static int Main()
+            {
+                // RFC 9106 section 5.3, Argon2id version 0x13.
+                byte[] password = Enumerable.Repeat((byte)0x01, 32).ToArray();
+                byte[] salt = Enumerable.Repeat((byte)0x02, 16).ToArray();
+                byte[] secret = Enumerable.Repeat((byte)0x03, 8).ToArray();
+                byte[] ad = Enumerable.Repeat((byte)0x04, 12).ToArray();
+                var parameters = new Argon2Parameters(Argon2Type.Id, 32, 3, 4);
+                const string expected = "0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659";
+
+                byte[] tag = Argon2.Hash(parameters, password, salt, new Argon2AdditionalInputs(secret, ad), threads: 4);
+                string hex = BitConverter.ToString(tag).Replace("-", "").ToLowerInvariant();
+                if (hex != expected) { Console.Error.WriteLine("one-shot tag " + hex); return 1; }
+
+                using (var hasher = new Argon2Hasher(parameters, threads: 4))
+                {
+                    tag = hasher.Hash(password, salt, new Argon2AdditionalInputs(secret, ad));
+                    hex = BitConverter.ToString(tag).Replace("-", "").ToLowerInvariant();
+                    if (hex != expected) { Console.Error.WriteLine("hasher tag " + hex); return 1; }
+                }
+
+                var stored = Argon2Parameters.OwaspMinimum;
+                var limits = new Argon2VerificationLimits(stored, maxEncodedLength: 1024);
+                string encoded = Argon2.HashToString(stored, "correct horse battery staple".AsSpan());
+                if (!Argon2.Verify(encoded.AsSpan(), "correct horse battery staple".AsSpan(), limits)) { Console.Error.WriteLine("verify failed"); return 1; }
+                if (Argon2.Verify(encoded.AsSpan(), "wrong password".AsSpan(), limits)) { Console.Error.WriteLine("wrong password verified"); return 1; }
+
+                Console.WriteLine("ok: " + typeof(Argon2).Assembly.FullName);
+                return 0;
+            }
+        }
+        PROG
+        dotnet build -c Release
+        ./bin/Release/net48/ns20.exe
+
+  native-aot:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        filter: tree:0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: global.json
+        cache: false
+
+    - name: Publish a Native AOT app that hashes and verifies
+      run: |
+        set -e
+        mkdir -p /tmp/aot && cd /tmp/aot
+        dotnet new console -n AotSmoke -o . --force > /dev/null
+        dotnet add AotSmoke.csproj reference "$GITHUB_WORKSPACE/src/Argon2DotnetFast/Argon2DotnetFast.csproj" > /dev/null
+        cat > Program.cs <<'EOF'
+        using Argon2DotnetFast;
+
+        // RFC 9106 section 5.3, Argon2id version 0x13.
+        byte[] password = Enumerable.Repeat((byte)0x01, 32).ToArray();
+        byte[] salt = Enumerable.Repeat((byte)0x02, 16).ToArray();
+        byte[] secret = Enumerable.Repeat((byte)0x03, 8).ToArray();
+        byte[] ad = Enumerable.Repeat((byte)0x04, 12).ToArray();
+        var parameters = new Argon2Parameters(Argon2Type.Id, 32, 3, 4);
+        const string expected = "0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659";
+
+        string hex = Convert.ToHexStringLower(Argon2.Hash(parameters, password, salt, new Argon2AdditionalInputs(secret, ad), threads: 4));
+        if (hex != expected) { Console.Error.WriteLine($"one-shot tag {hex}"); return 1; }
+
+        using (var hasher = new Argon2Hasher(parameters, threads: 4))
+        {
+            hex = Convert.ToHexStringLower(hasher.Hash(password, salt, new Argon2AdditionalInputs(secret, ad)));
+            if (hex != expected) { Console.Error.WriteLine($"hasher tag {hex}"); return 1; }
+        }
+
+        var stored = Argon2Parameters.OwaspMinimum;
+        var limits = new Argon2VerificationLimits(stored, maxEncodedLength: 1024);
+        string encoded = Argon2.HashToString(stored, "correct horse battery staple");
+        if (!Argon2.Verify(encoded, "correct horse battery staple", limits)) { Console.Error.WriteLine("verify failed"); return 1; }
+        if (Argon2.Verify(encoded, "wrong password", limits)) { Console.Error.WriteLine("wrong password verified"); return 1; }
+
+        Console.WriteLine($"ok: {encoded}");
+        return 0;
+        EOF
+        sed -i 's#<PropertyGroup>#<PropertyGroup><PublishAot>true</PublishAot><InvariantGlobalization>true</InvariantGlobalization>#' AotSmoke.csproj
+        dotnet publish -c Release -r linux-x64 -o out
+        ./out/AotSmoke
+        test ! -e out/Argon2DotnetFast.dll

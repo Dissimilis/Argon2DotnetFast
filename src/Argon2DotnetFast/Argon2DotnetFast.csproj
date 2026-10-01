@@ -6,10 +6,28 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <Version>0.1.0</Version>
-    <Description>Argon2d, Argon2i and Argon2id with raw hashing, PHC encoding, bounded verification and reusable memory.</Description>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>
+
+    <!-- The version comes from the latest vX.Y.Z tag. Untagged commits build as 1.0.0-alpha.0.N. -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+
+    <PackageId>Argon2DotnetFast</PackageId>
+    <Title>Argon2 password hashing for .NET</Title>
+    <Description>Argon2id, Argon2i and Argon2d (RFC 9106) in managed C#, with AVX-512, AVX2, NEON and SVE2 compression chosen at run time and no native library. PHC strings with bounded verification and NeedsRehash, secret and associated data, any tag length, and a reusable hasher that keeps its memory and lane threads between calls. Targets .NET 10, .NET 8 and .NET Standard 2.0.</Description>
+    <Authors>Marius Vitkevičius</Authors>
+    <Copyright>Copyright (c) 2026 Marius Vitkevičius</Copyright>
+    <PackageTags>argon2;argon2id;argon2i;argon2d;password;password-hashing;kdf;rfc9106;phc;cryptography;simd;avx512;neon;managed</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Dissimilis/Argon2DotnetFast</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Dissimilis/Argon2DotnetFast</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
   <!-- .NET 8's reference assembly gives AdvSimd.ShiftRightLogical on 64-bit lanes a 1-16 range; the
        instruction takes 1-64, and .NET 10 declares that. -->
@@ -27,5 +45,10 @@
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
+    <None Include="../../img/icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <!-- Build time only: the package itself depends on nothing on net8.0 and net10.0. -->
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="all" />
   </ItemGroup>
 </Project>

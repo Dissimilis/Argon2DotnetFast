@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: nuget
+    directories:
+      - /src/Argon2DotnetFast
+      - /src/Argon2DotnetFast.Tests
+    schedule:
+      interval: monthly
+    ignore:
+      # The tests pin NSec per target framework: 26.x needs .NET 9, and 25.4.0 is the last for .NET 8.
+      - dependency-name: NSec.Cryptography
+      # The lowest version that works is the one to depend on; a raise forces it on every consumer.
+      - dependency-name: System.Memory

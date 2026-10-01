@@ -21,4 +21,13 @@ public class AssetTests
         };
         Assert.Equal(expected, loaded);
     }
+
+    // .NET Framework callers that are strong-named themselves can only reference a strong-named
+    // assembly. The token must not change between releases.
+    [Fact]
+    public void LibraryIsStrongNamedWithTheReleaseKey()
+    {
+        byte[]? token = typeof(Argon2).Assembly.GetName().GetPublicKeyToken();
+        Assert.Equal("6321ed566a278b44", Convert.ToHexString(token ?? []).ToLowerInvariant());
+    }
 }

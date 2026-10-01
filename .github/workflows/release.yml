@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Trusted publishing: nuget.org trusts this repository, this workflow file and this
+    # environment through GitHub's OIDC token, so there is no long-lived API key to store.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        filter: tree:0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      with:
+        global-json-file: global.json
+        dotnet-version: 8.0.x
+        cache: false
+
+    - name: Restore
+      run: dotnet restore Argon2DotnetFast.slnx
+
+    - name: Build
+      run: dotnet build Argon2DotnetFast.slnx -c Release --no-restore
+
+    - name: Test
+      run: |
+        dotnet test src/Argon2DotnetFast.Tests -c Release --no-build --blame-hang-timeout 300s
+        dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=net8.0 --blame-hang-timeout 300s
+        dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=netstandard2.0 --blame-hang-timeout 300s
+
+    - name: Pack
+      run: dotnet pack src/Argon2DotnetFast -c Release --no-build --output ./nupkgs
+
+    - name: Check that the package version is the release tag
+      run: |
+        set -e
+        tag="${{ github.event.release.tag_name }}"
+        case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "tag '$tag' is not vX.Y.Z"; exit 1;; esac
+        ls ./nupkgs/Argon2DotnetFast.${tag#v}.nupkg
+
+    - name: Check that every assembly carries a strong-name signature
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pkg = Get-ChildItem ./nupkgs -Filter 'Argon2DotnetFast.*.nupkg' | Select-Object -First 1
+        $zip = [IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+        try {
+          foreach ($entry in $zip.Entries | Where-Object FullName -like 'lib/*/Argon2DotnetFast.dll') {
+            $ms = [IO.MemoryStream]::new()
+            $stream = $entry.Open(); $stream.CopyTo($ms); $stream.Dispose()
+            $bytes = $ms.ToArray(); $ms.Position = 0
+            $pe = [Reflection.PortableExecutable.PEReader]::new($ms)
+            $dir = $pe.PEHeaders.CorHeader.StrongNameSignatureDirectory
+            $offset = 0
+            if ($dir.Size -eq 0 -or -not $pe.PEHeaders.TryGetDirectoryOffset($dir, [ref]$offset)) { throw "$($entry.FullName) has no strong-name signature" }
+            if (-not ($bytes[$offset..($offset + $dir.Size - 1)] | Where-Object { $_ -ne 0 })) { throw "$($entry.FullName) is only public-signed" }
+            "$($entry.FullName): signed"
+          }
+        } finally { $zip.Dispose() }
+
+    - name: Log in to nuget.org
+      id: login
+      uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+      with:
+        user: Dissimilis
+
+    - name: Push to NuGet
+      run: dotnet nuget push ./nupkgs/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

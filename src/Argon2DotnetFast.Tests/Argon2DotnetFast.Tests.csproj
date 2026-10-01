@@ -16,6 +16,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
+    <!-- Signed so the library's InternalsVisibleTo applies; the oracles it references are not strong-named. -->
+    <NoWarn>$(NoWarn);CS8002</NoWarn>
     <LibraryTarget Condition="'$(LibraryTarget)' == ''">net10.0</LibraryTarget>
   </PropertyGroup>
 
