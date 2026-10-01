@@ -11,18 +11,23 @@ internal static unsafe class Neon
 {
     internal static bool IsSupported => AdvSimd.Arm64.IsSupported;
 
-    // Forwards to the SVE2 body before any NEON register is built, so this body's code does not change.
+    // Forwards to the SVE2 body (.NET 10 only) before any NEON register is built, so this body's code
+    // does not change.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static void Fill(ulong* previous, ulong* reference, ulong* destination, ulong* scratch)
     {
+#if NET10_0_OR_GREATER
         if (Sve2Body.IsSupported) { Sve2Body.Fill(previous, reference, destination, scratch); return; }
+#endif
         Compress(previous, reference, destination, scratch, false);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static void FillXor(ulong* previous, ulong* reference, ulong* destination, ulong* scratch)
     {
+#if NET10_0_OR_GREATER
         if (Sve2Body.IsSupported) { Sve2Body.FillXor(previous, reference, destination, scratch); return; }
+#endif
         Compress(previous, reference, destination, scratch, true);
     }
 

@@ -18,7 +18,7 @@ internal static class CommonPasswordSet
     {
         string path = Path.Combine(dataDirectory, SourceName);
         byte[] file = File.ReadAllBytes(path);
-        string actual = Convert.ToHexStringLower(SHA256.HashData(file));
+        string actual = Convert.ToHexString(SHA256.HashData(file)).ToLowerInvariant();
         if (actual != SourceSha256)
             throw new InvalidDataException($"{path} has SHA-256 {actual}, expected {SourceSha256}.");
 

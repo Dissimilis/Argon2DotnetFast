@@ -17,7 +17,8 @@ internal static class Sensitive
     internal static void Clear(Span<byte> value)
     {
 #if NETSTANDARD2_0
-        for (int i = 0; i < value.Length; i++) value[i] = 0;
+        // A call from a method that is never inlined, so it cannot be dropped; it runs as memset.
+        value.Clear();
 #else
         CryptographicOperations.ZeroMemory(value);
 #endif

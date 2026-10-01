@@ -2,9 +2,9 @@
 
 # Argon2DotnetFast: Argon2 password hashing for .NET
 
-A managed C# implementation of [Argon2](https://www.rfc-editor.org/rfc/rfc9106) (RFC 9106) for .NET: Argon2id, Argon2i and Argon2d, versions 1.0 and 1.3. No native library to ship and no `DllImport`. Targets .NET 10 and .NET Standard 2.0.
+A managed C# implementation of [Argon2](https://www.rfc-editor.org/rfc/rfc9106) (RFC 9106) for .NET: Argon2id, Argon2i and Argon2d, versions 1.0 and 1.3. No native library to ship and no `DllImport`. Targets .NET 10, .NET 8 and .NET Standard 2.0.
 
-On .NET 10 it compresses blocks with AVX-512, AVX2, NEON or SVE2 code chosen at run time. An `Argon2Hasher` keeps one memory arena and its lane threads between calls; the one-shot methods set both up for each call. On the machine in [Performance](#performance) it was faster than every other Argon2 measured, .NET or native, libsodium and the reference C implementation included. If you need an implementation someone else has audited, use libsodium through [NSec](https://github.com/ektrah/nsec) instead.
+On .NET 8 and later it compresses blocks with AVX-512, AVX2 or NEON code chosen at run time, and with SVE2 on .NET 10. An `Argon2Hasher` keeps one memory arena and its lane threads between calls; the one-shot methods set both up for each call. On the machine in [Performance](#performance) it was faster than every other Argon2 measured, .NET or native, libsodium and the reference C implementation included. If you need an implementation someone else has audited, use libsodium through [NSec](https://github.com/ektrah/nsec) instead.
 
 [![NuGet](https://img.shields.io/nuget/v/Argon2DotnetFast.svg)](https://www.nuget.org/packages/Argon2DotnetFast)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Argon2DotnetFast.svg)](https://www.nuget.org/packages/Argon2DotnetFast)
@@ -17,9 +17,9 @@ On .NET 10 it compresses blocks with AVX-512, AVX2, NEON or SVE2 code chosen at 
 - PHC strings through `HashToString`, `Verify`, `Parse`, `Encode` and `NeedsRehash`, with unpadded Base64, a missing version read as 1.0, and unknown fields rejected
 - Bounded verification: limits on memory, passes, lanes, tag length, text length and threads, checked before a stored hash's salt and tag are decoded or an arena is allocated
 - A reusable `Argon2Hasher` that keeps one aligned arena and its lane threads between calls and wipes the arena after every call
-- Vector compression on .NET 10 for AVX-512VL, AVX2, NEON and SVE2, picked at run time, with a scalar fallback
+- Vector compression on .NET 8 and later for AVX-512VL, AVX2 and NEON, and SVE2 on .NET 10, picked at run time, with a scalar fallback
 - `CommonPasswords.Contains`, a built-in check against about 6,000 of the most common leaked passwords
-- `net10.0` with no package dependencies, and `netstandard2.0` for .NET 8 and 9, .NET Framework, Mono and Unity, which always runs the scalar body
+- `net10.0` and `net8.0` (which .NET 9 also uses) with no package dependencies, and `netstandard2.0` for .NET Framework, Mono and Unity, which always runs the scalar body
 
 ## Other Argon2 packages
 
@@ -33,14 +33,14 @@ This library is managed, computes any number of lanes, and keeps its memory betw
 
 Argon2 has one right answer. The tests check the RFC 9106 vectors for all three types and the phc-winner-argon2 known answers for version 1.0. Differential tests compare random parameter sets with three other implementations. BouncyCastle covers every type, both versions, several lanes, secret and associated data, and the memory sizes where data-independent addressing moves to its second address block. Konscious covers every type, several lanes, secret and associated data on version 1.3. libsodium, through NSec, covers Argon2id with one lane. Every thread count has to give the same tag.
 
-The current suite passes against both the .NET 10 and the .NET Standard 2.0 assembly on:
+The current suite passes against the .NET 10, .NET 8 and .NET Standard 2.0 assemblies on:
 
 - Windows 11 x64, AMD Zen 4 (AVX-512VL body)
 - Fedora 44, Linux x64 with glibc, AMD Zen 4 (AVX-512VL body)
 - Alpine 3.24, Linux x64 with musl, Intel Haswell in a virtual machine (AVX2 body)
 - Armbian (Debian 13), Linux ARM64, Cortex-A73 and A53 (NEON body)
 
-An earlier version of the suite passed on AWS Graviton4 with Ubuntu 26.04 (SVE2 body).
+On Windows the .NET 8 assembly ran on the .NET 8 runtime; the Linux machines have no .NET 8 runtime, so there it ran on .NET 10. An earlier version of the suite passed on AWS Graviton4 with Ubuntu 26.04 (SVE2 body).
 
 ## Installation
 
@@ -339,15 +339,15 @@ The compression body is chosen once, at run time:
 
 | Tier | Where it runs | Shape |
 |------|---------------|-------|
-| AVX-512VL | x64 with AVX-512VL, .NET 10 | 256-bit vectors that use the upper 16 registers; four BlaMka chains per row-pass iteration, `vprorq` rotates |
-| AVX2 | other x64 with AVX2, .NET 10 | 256-bit vectors in the round order of phc-winner `opt.c`, two chains per iteration |
+| AVX-512VL | x64 with AVX-512VL, .NET 8 and later | 256-bit vectors that use the upper 16 registers; four BlaMka chains per row-pass iteration, `vprorq` rotates |
+| AVX2 | other x64 with AVX2, .NET 8 and later | 256-bit vectors in the round order of phc-winner `opt.c`, two chains per iteration |
 | SVE2 | ARM64 with SVE2 at a 128-bit vector length, .NET 10 | the NEON body with `xar` fused xor-and-rotate, six chains in flight |
-| NEON | other ARM64, .NET 10 | 128-bit vectors, four chains written one step at a time |
+| NEON | other ARM64, .NET 8 and later | 128-bit vectors, four chains written one step at a time |
 | Scalar | everything else, and the .NET Standard 2.0 assembly | portable C# |
 
-Every vector body starts loading the next block's reference while the current block is still being compressed. SVE2 uses `System.Runtime.Intrinsics.Arm.Sve2`, which .NET 10 marks experimental; other ARM64 CPUs, SVE2 at a wider vector length included, run the NEON body.
+Every vector body starts loading the next block's reference while the current block is still being compressed. SVE2 uses `System.Runtime.Intrinsics.Arm.Sve2`, which .NET 10 marks experimental and .NET 8 does not have; other ARM64 CPUs, SVE2 at a wider vector length included, and every ARM64 CPU on .NET 8 run the NEON body.
 
-On Linux the .NET 10 assembly asks for transparent huge pages for any arena of 2 MiB or more, through libc's `madvise`, since a random 1 KiB block in a 64 MiB arena of 4 KiB pages misses the TLB almost every time. A host that refuses keeps small pages. On x64 Linux with glibc it wipes the arena's blocks with non-temporal stores, because glibc's `memset` reads every line before it writes it at these sizes.
+On Linux the .NET 8 and .NET 10 assemblies ask for transparent huge pages for any arena of 2 MiB or more, through libc's `madvise`, since a random 1 KiB block in a 64 MiB arena of 4 KiB pages misses the TLB almost every time. A host that refuses keeps small pages. On x64 Linux with glibc it wipes the arena's blocks with non-temporal stores, because glibc's `memset` reads every line before it writes it at these sizes.
 
 ## Building from source
 
@@ -355,15 +355,16 @@ On Linux the .NET 10 assembly asks for transparent huge pages for any arena of 2
 # Requires the .NET 10 SDK
 dotnet build Argon2DotnetFast.slnx -c Release
 
-# Run the tests against the .NET 10 assembly, then against the .NET Standard 2.0 assembly
+# Run the tests against the .NET 10, .NET 8 and .NET Standard 2.0 assemblies
 dotnet test src/Argon2DotnetFast.Tests -c Release
+dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=net8.0
 dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=netstandard2.0
 
 # Create the NuGet package
 dotnet pack src/Argon2DotnetFast -c Release
 ```
 
-The second test command runs the same tests against the .NET Standard 2.0 assembly on the .NET 10 runtime. It does not show that older runtimes work. Only that target depends on `System.Memory`.
+The `net8.0` command builds the tests for .NET 8 too, so they run on the .NET 8 runtime. The `netstandard2.0` command runs the .NET Standard 2.0 assembly on the .NET 10 runtime; it does not show that older runtimes work. Only that target depends on `System.Memory`.
 
 After changing the common-password list, regenerate its data and commit that on its own:
 

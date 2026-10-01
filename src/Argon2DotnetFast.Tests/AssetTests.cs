@@ -15,6 +15,7 @@ public class AssetTests
         string expected = configured switch
         {
             "net10.0" => ".NETCoreApp,Version=v10.0",
+            "net8.0" => ".NETCoreApp,Version=v8.0",
             "netstandard2.0" => ".NETStandard,Version=v2.0",
             _ => throw new InvalidOperationException($"Unknown LibraryTarget {configured}."),
         };

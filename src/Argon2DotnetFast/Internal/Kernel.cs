@@ -10,8 +10,13 @@ internal static unsafe class Kernel
     private static readonly bool UseAvx512Vl = Avx512VlBody.IsSupported;
     private static readonly bool UseAvx2 = Avx2Body.IsSupported;
 
+#if NET10_0_OR_GREATER
     internal static string Name =>
         UseNeon ? (Sve2Body.IsSupported ? "sve2" : "neon") : UseAvx512Vl ? "avx512vl" : UseAvx2 ? "avx2" : "scalar";
+#else
+    internal static string Name =>
+        UseNeon ? "neon" : UseAvx512Vl ? "avx512vl" : UseAvx2 ? "avx2" : "scalar";
+#endif
 #else
     internal static string Name => "scalar";
 #endif
