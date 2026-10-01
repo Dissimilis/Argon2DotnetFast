@@ -191,7 +191,8 @@ internal sealed class Argon2Core : ISliceWork
 
     private int ReferenceBlock(int pass, int slice, int lane, int index, ulong random)
     {
-        int referenceLane = (int)((random >> 32) % (uint)parameters.Parallelism);
+        // 32-bit operands give a 32-bit div, which older Intel cores run several times faster than a 64-bit one.
+        int referenceLane = (int)((uint)(random >> 32) % (uint)parameters.Parallelism);
         if (pass == 0 && slice == 0) referenceLane = lane;
         return referenceLane * laneLength + ReferenceIndex(pass, slice, index, (uint)random, referenceLane == lane);
     }
@@ -207,7 +208,8 @@ internal sealed class Argon2Core : ISliceWork
         ulong relative = (ulong)random * random >> 32;
         relative = (uint)area - 1 - ((uint)area * relative >> 32);
         int start = pass == 0 || slice == 3 ? 0 : (slice + 1) * segmentLength;
-        return (int)(((ulong)start + relative) % (uint)laneLength);
+        // Below 1.75 lane lengths, so the sum fits in 32 bits and the remainder is a 32-bit div.
+        return (int)(((uint)start + (uint)relative) % (uint)laneLength);
     }
 
     private void Finish(Span<byte> output)
