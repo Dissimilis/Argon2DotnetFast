@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
 namespace Argon2DotnetFast.Internal;
 
 internal static class Scalar
@@ -15,45 +18,80 @@ internal static class Scalar
 
     // Every row reads its input before any column writes the destination, so this also holds when
     // destination aliases reference in the address generator.
-    private static void Compress(ReadOnlySpan<ulong> previous, ReadOnlySpan<ulong> reference,
+    private static unsafe void Compress(ReadOnlySpan<ulong> previous, ReadOnlySpan<ulong> reference,
         Span<ulong> destination, Span<ulong> scratch, bool xor)
     {
-        Span<ulong> r = scratch.Slice(0, 128);
-        Span<ulong> saved = scratch.Slice(128, 128);
-        for (int row = 0; row < 8; row++)
+        Debug.Assert(previous.Length >= 128 && reference.Length >= 128 && destination.Length >= 128 &&
+            scratch.Length >= ScratchWords);
+        fixed (ulong* p = previous, q = reference, d = destination, s = scratch)
         {
-            int at = row * 16;
-            RoundIn(previous.Slice(at, 16), reference.Slice(at, 16), destination.Slice(at, 16),
-                r.Slice(at, 16), saved.Slice(at, 16), xor);
+            if (xor)
+                for (int at = 0; at < 128; at += 16) RoundInXor(p + at, q + at, d + at, s + at);
+            else
+                for (int at = 0; at < 128; at += 16) RoundInOverwrite(p + at, q + at, s + at);
+            for (int col = 0; col < 16; col += 2) RoundOut(s + col, d + col);
         }
-        for (int col = 0; col < 8; col++) RoundOut(r.Slice(col * 2), saved.Slice(col * 2), destination.Slice(col * 2));
     }
 
     // One BLAKE2b round without the message words. The four G's of each half are independent, so
     // each step is written across all four before the next one: RyuJIT emits in source order.
     // A row round that reads its input as previous ^ reference and writes the saved copy (R, or
     // R ^ old in XOR mode) on the way in, so Fill makes no separate pass over the block.
-    private static void RoundIn(ReadOnlySpan<ulong> p, ReadOnlySpan<ulong> q, ReadOnlySpan<ulong> old,
-        Span<ulong> v, Span<ulong> saved, bool xor)
+    // v is this row of r; the saved copy sits 128 words after it. Overwrite passes: saved is R.
+    private static unsafe void RoundInOverwrite(ulong* p, ulong* q, ulong* v)
     {
+        ulong* saved = v + 128;
         ulong v15 = p[15] ^ q[15], v0 = p[0] ^ q[0], v1 = p[1] ^ q[1], v2 = p[2] ^ q[2], v3 = p[3] ^ q[3],
             v4 = p[4] ^ q[4], v5 = p[5] ^ q[5], v6 = p[6] ^ q[6], v7 = p[7] ^ q[7], v8 = p[8] ^ q[8],
             v9 = p[9] ^ q[9], v10 = p[10] ^ q[10], v11 = p[11] ^ q[11], v12 = p[12] ^ q[12],
             v13 = p[13] ^ q[13], v14 = p[14] ^ q[14];
-        if (xor)
-        {
-            saved[15] = v15 ^ old[15]; saved[0] = v0 ^ old[0]; saved[1] = v1 ^ old[1]; saved[2] = v2 ^ old[2];
-            saved[3] = v3 ^ old[3]; saved[4] = v4 ^ old[4]; saved[5] = v5 ^ old[5]; saved[6] = v6 ^ old[6];
-            saved[7] = v7 ^ old[7]; saved[8] = v8 ^ old[8]; saved[9] = v9 ^ old[9];
-            saved[10] = v10 ^ old[10]; saved[11] = v11 ^ old[11]; saved[12] = v12 ^ old[12];
-            saved[13] = v13 ^ old[13]; saved[14] = v14 ^ old[14];
-        }
-        else
-        {
-            saved[15] = v15; saved[0] = v0; saved[1] = v1; saved[2] = v2; saved[3] = v3; saved[4] = v4;
-            saved[5] = v5; saved[6] = v6; saved[7] = v7; saved[8] = v8; saved[9] = v9; saved[10] = v10;
-            saved[11] = v11; saved[12] = v12; saved[13] = v13; saved[14] = v14;
-        }
+        saved[15] = v15; saved[0] = v0; saved[1] = v1; saved[2] = v2; saved[3] = v3; saved[4] = v4;
+        saved[5] = v5; saved[6] = v6; saved[7] = v7; saved[8] = v8; saved[9] = v9; saved[10] = v10;
+        saved[11] = v11; saved[12] = v12; saved[13] = v13; saved[14] = v14;
+
+        v0 = Add(v0, v4); v1 = Add(v1, v5); v2 = Add(v2, v6); v3 = Add(v3, v7);
+        v12 = Blake2b.Rotate(v12 ^ v0, 32); v13 = Blake2b.Rotate(v13 ^ v1, 32);
+        v14 = Blake2b.Rotate(v14 ^ v2, 32); v15 = Blake2b.Rotate(v15 ^ v3, 32);
+        v8 = Add(v8, v12); v9 = Add(v9, v13); v10 = Add(v10, v14); v11 = Add(v11, v15);
+        v4 = Blake2b.Rotate(v4 ^ v8, 24); v5 = Blake2b.Rotate(v5 ^ v9, 24);
+        v6 = Blake2b.Rotate(v6 ^ v10, 24); v7 = Blake2b.Rotate(v7 ^ v11, 24);
+        v0 = Add(v0, v4); v1 = Add(v1, v5); v2 = Add(v2, v6); v3 = Add(v3, v7);
+        v12 = Blake2b.Rotate(v12 ^ v0, 16); v13 = Blake2b.Rotate(v13 ^ v1, 16);
+        v14 = Blake2b.Rotate(v14 ^ v2, 16); v15 = Blake2b.Rotate(v15 ^ v3, 16);
+        v8 = Add(v8, v12); v9 = Add(v9, v13); v10 = Add(v10, v14); v11 = Add(v11, v15);
+        v4 = Blake2b.Rotate(v4 ^ v8, 63); v5 = Blake2b.Rotate(v5 ^ v9, 63);
+        v6 = Blake2b.Rotate(v6 ^ v10, 63); v7 = Blake2b.Rotate(v7 ^ v11, 63);
+
+        v0 = Add(v0, v5); v1 = Add(v1, v6); v2 = Add(v2, v7); v3 = Add(v3, v4);
+        v15 = Blake2b.Rotate(v15 ^ v0, 32); v12 = Blake2b.Rotate(v12 ^ v1, 32);
+        v13 = Blake2b.Rotate(v13 ^ v2, 32); v14 = Blake2b.Rotate(v14 ^ v3, 32);
+        v10 = Add(v10, v15); v11 = Add(v11, v12); v8 = Add(v8, v13); v9 = Add(v9, v14);
+        v5 = Blake2b.Rotate(v5 ^ v10, 24); v6 = Blake2b.Rotate(v6 ^ v11, 24);
+        v7 = Blake2b.Rotate(v7 ^ v8, 24); v4 = Blake2b.Rotate(v4 ^ v9, 24);
+        v0 = Add(v0, v5); v1 = Add(v1, v6); v2 = Add(v2, v7); v3 = Add(v3, v4);
+        v15 = Blake2b.Rotate(v15 ^ v0, 16); v12 = Blake2b.Rotate(v12 ^ v1, 16);
+        v13 = Blake2b.Rotate(v13 ^ v2, 16); v14 = Blake2b.Rotate(v14 ^ v3, 16);
+        v10 = Add(v10, v15); v11 = Add(v11, v12); v8 = Add(v8, v13); v9 = Add(v9, v14);
+        v5 = Blake2b.Rotate(v5 ^ v10, 63); v6 = Blake2b.Rotate(v6 ^ v11, 63);
+        v7 = Blake2b.Rotate(v7 ^ v8, 63); v4 = Blake2b.Rotate(v4 ^ v9, 63);
+
+        v[15] = v15; v[0] = v0; v[1] = v1; v[2] = v2; v[3] = v3; v[4] = v4; v[5] = v5; v[6] = v6; v[7] = v7;
+        v[8] = v8; v[9] = v9; v[10] = v10; v[11] = v11; v[12] = v12; v[13] = v13; v[14] = v14;
+    }
+
+    // Version 19 after the first pass: saved is R ^ old, the block this one is XORed into.
+    private static unsafe void RoundInXor(ulong* p, ulong* q, ulong* old, ulong* v)
+    {
+        ulong* saved = v + 128;
+        ulong v15 = p[15] ^ q[15], v0 = p[0] ^ q[0], v1 = p[1] ^ q[1], v2 = p[2] ^ q[2], v3 = p[3] ^ q[3],
+            v4 = p[4] ^ q[4], v5 = p[5] ^ q[5], v6 = p[6] ^ q[6], v7 = p[7] ^ q[7], v8 = p[8] ^ q[8],
+            v9 = p[9] ^ q[9], v10 = p[10] ^ q[10], v11 = p[11] ^ q[11], v12 = p[12] ^ q[12],
+            v13 = p[13] ^ q[13], v14 = p[14] ^ q[14];
+        saved[15] = v15 ^ old[15]; saved[0] = v0 ^ old[0]; saved[1] = v1 ^ old[1]; saved[2] = v2 ^ old[2];
+        saved[3] = v3 ^ old[3]; saved[4] = v4 ^ old[4]; saved[5] = v5 ^ old[5]; saved[6] = v6 ^ old[6];
+        saved[7] = v7 ^ old[7]; saved[8] = v8 ^ old[8]; saved[9] = v9 ^ old[9];
+        saved[10] = v10 ^ old[10]; saved[11] = v11 ^ old[11]; saved[12] = v12 ^ old[12];
+        saved[13] = v13 ^ old[13]; saved[14] = v14 ^ old[14];
 
         v0 = Add(v0, v4); v1 = Add(v1, v5); v2 = Add(v2, v6); v3 = Add(v3, v7);
         v12 = Blake2b.Rotate(v12 ^ v0, 32); v13 = Blake2b.Rotate(v13 ^ v1, 32);
@@ -87,8 +125,9 @@ internal static class Scalar
 
     // A column round on r (word i of the column at 16 * (i / 2) + i % 2) that stores saved ^ result
     // straight to the destination.
-    private static void RoundOut(ReadOnlySpan<ulong> v, ReadOnlySpan<ulong> saved, Span<ulong> d)
+    private static unsafe void RoundOut(ulong* v, ulong* d)
     {
+        ulong* saved = v + 128;
         ulong v15 = v[113], v0 = v[0], v1 = v[1], v2 = v[16], v3 = v[17], v4 = v[32], v5 = v[33], v6 = v[48],
             v7 = v[49], v8 = v[64], v9 = v[65], v10 = v[80], v11 = v[81], v12 = v[96], v13 = v[97],
             v14 = v[112];
@@ -126,5 +165,16 @@ internal static class Scalar
         d[112] = saved[112] ^ v14;
     }
 
-    private static ulong Add(ulong a, ulong b) => unchecked(a + b + 2UL * (uint)a * (uint)b);
+    // The 32-bit JIT turns (2UL * (uint)a) * (uint)b into a call to its 64-bit multiply helper; the
+    // widening product alone is one mul. IntPtr.Size is a constant to the JIT, so 64-bit code is unchanged.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Add(ulong a, ulong b)
+    {
+        if (IntPtr.Size == 4)
+        {
+            ulong m = (ulong)(uint)a * (uint)b;
+            return unchecked(a + b + m + m);
+        }
+        return unchecked(a + b + 2UL * (uint)a * (uint)b);
+    }
 }

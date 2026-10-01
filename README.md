@@ -4,7 +4,7 @@
 
 A managed C# implementation of [Argon2](https://www.rfc-editor.org/rfc/rfc9106) (RFC 9106) for .NET: Argon2id, Argon2i and Argon2d, versions 1.0 and 1.3. No native library to ship and no `DllImport`. Targets .NET 10, .NET 8 and .NET Standard 2.0.
 
-On .NET 8 and later it compresses blocks with AVX-512, AVX2 or NEON code chosen at run time, and with SVE2 on .NET 10. An `Argon2Hasher` keeps one memory arena and its lane threads between calls; the one-shot methods set both up for each call. On the machine in [Performance](#performance) it was faster than every other Argon2 measured, .NET or native, libsodium and the reference C implementation included. If you need an implementation someone else has audited, use libsodium through [NSec](https://github.com/ektrah/nsec) instead.
+It is one of the fastest Argon2 hashers in the world, in any language: on the machine in [Performance](#performance) it was faster than every other Argon2 measured, .NET or native, libsodium, argon2-rust and the reference C implementation included. On .NET 8 and later it compresses blocks with AVX-512, AVX2 or NEON code chosen at run time, and with SVE2 on .NET 10. An `Argon2Hasher` keeps one memory arena and its lane threads between calls; the one-shot methods set both up for each call. If you need an implementation someone else has audited, use libsodium through [NSec](https://github.com/ektrah/nsec) instead.
 
 [![NuGet](https://img.shields.io/nuget/v/Argon2DotnetFast.svg)](https://www.nuget.org/packages/Argon2DotnetFast)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Argon2DotnetFast.svg)](https://www.nuget.org/packages/Argon2DotnetFast)
@@ -40,7 +40,7 @@ The current suite passes against the .NET 10, .NET 8 and .NET Standard 2.0 assem
 - Alpine 3.24, Linux x64 with musl, Intel Haswell in a virtual machine (AVX2 body)
 - Armbian (Debian 13), Linux ARM64, Cortex-A73 and A53 (NEON body)
 
-On Windows the .NET 8 assembly ran on the .NET 8 runtime; the Linux machines have no .NET 8 runtime, so there it ran on .NET 10. An earlier version of the suite passed on AWS Graviton4 with Ubuntu 26.04 (SVE2 body).
+The .NET 8 assembly ran on the .NET 8 runtime on Windows and on the ARM64 board; the two Linux x64 machines have no .NET 8 runtime, so there it ran on .NET 10. An earlier version of the suite passed on AWS Graviton4 with Ubuntu 26.04 (SVE2 body). In a 32-bit process on Windows, under the 32-bit .NET 10 runtime, the .NET Standard 2.0 assembly passed the benchmark harness's known-answer check (the RFC 9106 and phc-winner vectors, and the 64 MiB ones from phc-winner's `test.c`); the test suite itself has not run there.
 
 ## Installation
 
@@ -331,7 +331,7 @@ Compare a library that keeps its memory with the `Argon2Hasher` row, and one tha
 
 In a run on the same machine the day before, with an earlier build of this library, the most used managed packages took several times as long at 64 MiB with one lane, even against a one-shot `Argon2.Hash` call: Konscious 5.0 times as long, BouncyCastle 6.1 times and Isopoh 7.7 times (versions 1.3.1, 2.7.0 and 2.0.0). Argon2Sharp 4.0.1, which calls Rust, took 2.2 times.
 
-Only this machine, on Linux, was measured against the whole field; Windows and macOS were not. The margins depend on the CPU. In earlier runs on an AVX2-only Intel Core i5-4460, libsodium took 1.20 to 1.26 times as long as a reused hasher and 1.06 to 1.11 times as long as a one-shot call; that machine is a virtual machine that gives huge pages to every allocation, libsodium's included. On a Cortex-A73, in an older and shorter run, NSec took 1.46 times as long as a reused hasher, since libsodium has no NEON body. The scalar body, which the .NET Standard 2.0 assembly runs, took 1.23 times as long as NSec on that core.
+Only this machine, on Linux, was measured against the whole field; Windows and macOS were not. The margins depend on the CPU. In earlier runs on an AVX2-only Intel Core i5-4460, libsodium took 1.20 to 1.26 times as long as a reused hasher and 1.06 to 1.11 times as long as a one-shot call; that machine is a virtual machine that gives huge pages to every allocation, libsodium's included. On a Cortex-A73 at 64 MiB with one lane (2026-10-01, seven rounds), NSec took 1.68 times as long as a reused hasher, since libsodium has no NEON body. The scalar body, which the .NET Standard 2.0 assembly runs, beat libsodium there too: NSec took 1.40 times as long as it, Argon2Sharp 1.16 times, and Konscious, BouncyCastle and Isopoh 2.8 to 3.8 times.
 
 ### Hardware intrinsics tiering
 
@@ -344,6 +344,8 @@ The compression body is chosen once, at run time:
 | SVE2 | ARM64 with SVE2 at a 128-bit vector length, .NET 10 | the NEON body with `xar` fused xor-and-rotate, six chains in flight |
 | NEON | other ARM64, .NET 8 and later | 128-bit vectors, four chains written one step at a time |
 | Scalar | everything else, and the .NET Standard 2.0 assembly | portable C# |
+
+In a 32-bit process the scalar body writes the BlaMka product as one 32-by-32-bit multiply. Written the usual way, `2UL * (uint)a * (uint)b` is a 64-bit multiply, and the 32-bit .NET 10 JIT calls a helper for each of the 512 multiplies in a block, which made hashes take 1.5 to 1.6 times as long. .NET Framework's 32-bit JIT was not measured. 64-bit code is unchanged.
 
 Every vector body starts loading the next block's reference while the current block is still being compressed. SVE2 uses `System.Runtime.Intrinsics.Arm.Sve2`, which .NET 10 marks experimental and .NET 8 does not have; other ARM64 CPUs, SVE2 at a wider vector length included, and every ARM64 CPU on .NET 8 run the NEON body.
 
