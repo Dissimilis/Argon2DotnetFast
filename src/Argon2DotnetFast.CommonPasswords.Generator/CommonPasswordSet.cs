@@ -8,7 +8,7 @@ internal static class CommonPasswordSet
 {
     internal const string SourceName = "xato-net-10-million-passwords-10000.txt";
     internal const string SourceSha256 = "c63d5e4ccc31344d662583cc39ca4bd5bd20517ff1d24501f0c4e0c22d9b722a";
-    internal const int Budget = 10240;
+    internal const int Budget = 20480;
     private const int RemainderBits = 12;
 
     internal sealed record Result(int Count, int MaxLength, ulong[] Codes, byte[] Stream);

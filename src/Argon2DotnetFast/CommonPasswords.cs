@@ -8,8 +8,8 @@ namespace Argon2DotnetFast;
 /// sign-up or password change. Hashing and verification never call it.
 /// </summary>
 /// <remarks>
-/// The list is the top of Mark Burnett's 10 million password set (Public Domain Mark 1.0) as ranked by
-/// SecLists, with ASCII A-Z folded to lowercase, stored in about 10 KB. A <see langword="true"/> result is a
+/// The list is the top 10,000 of Mark Burnett's 10 million password set (Public Domain Mark 1.0) as ranked by
+/// SecLists, with ASCII A-Z folded to lowercase, stored in about 17 KB. A <see langword="true"/> result is a
 /// false positive for about one in 4,096 unlisted passwords. <see langword="false"/> is exact, but it does
 /// not mean the password is strong.
 /// </remarks>

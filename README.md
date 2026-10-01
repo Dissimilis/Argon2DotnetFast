@@ -18,7 +18,7 @@ It is one of the fastest Argon2 hashers in the world, in any language: on the ma
 - Bounded verification: limits on memory, passes, lanes, tag length, text length and threads, checked before a stored hash's salt and tag are decoded or an arena is allocated
 - A reusable `Argon2Hasher` that keeps one aligned arena and its lane threads between calls and wipes the arena after every call
 - Vector compression on .NET 8 and later for AVX-512VL, AVX2 and NEON, and SVE2 on .NET 10, picked at run time, with a scalar fallback
-- `CommonPasswords.Contains`, a built-in check against about 6,000 of the most common leaked passwords
+- `CommonPasswords.Contains`, a built-in check against the 10,000 most common leaked passwords
 - `net10.0` and `net8.0` (which .NET 9 also uses) with no package dependencies, and `netstandard2.0` for .NET Framework, Mono and Unity, which always runs the scalar body
 
 ## Other Argon2 packages
@@ -270,9 +270,9 @@ if (CommonPasswords.Contains(newPassword))
     return "That password appears in leaked-password lists. Choose another.";
 ```
 
-The list is the top 6,030 entries of `xato-net-10-million-passwords-10000.txt` from [SecLists](https://github.com/danielmiessler/SecLists) (MIT), which ranks Mark Burnett's 2015 set of ten million leaked passwords (Public Domain Mark 1.0). ASCII `A`-`Z` are folded to lowercase on both sides, so `PASSWORD` matches; nothing else is folded, trimmed or normalized. The empty password is on the list.
+The list is all of `xato-net-10-million-passwords-10000.txt` from [SecLists](https://github.com/danielmiessler/SecLists) (MIT), the top 10,000 of Mark Burnett's 2015 set of ten million leaked passwords (Public Domain Mark 1.0). ASCII `A`-`Z` are folded to lowercase on both sides, so `PASSWORD` matches; nothing else is folded, trimmed or normalized. Folding leaves 9,917 distinct entries. The empty password is on the list.
 
-The set is 10,240 bytes of Rice-coded hashes, so the answer can be wrong in one direction only. `false` is exact. `true` is wrong for about one in 4,096 unlisted passwords of 16 bytes or less, and longer passwords return `false` without being hashed. A `false` result says the password is not common, not that it is strong. A lookup allocates nothing.
+The set is 16,839 bytes of Rice-coded hashes, so the answer can be wrong in one direction only. `false` is exact. `true` is wrong for about one in 4,096 unlisted passwords of 16 bytes or less, and longer passwords return `false` without being hashed. A `false` result says the password is not common, not that it is strong. A lookup allocates nothing.
 
 ## Security notes
 
