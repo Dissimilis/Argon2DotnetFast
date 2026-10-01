@@ -1,0 +1,2 @@
+# The common-password list is pinned by its SHA-256. Never convert its line endings.
+src/Argon2DotnetFast.CommonPasswords.Generator/data/*.txt -text
