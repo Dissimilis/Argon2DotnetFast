@@ -18,7 +18,7 @@ public sealed class ReferenceIndexTests
         ulong[] edges = { 0, 1, uint.MaxValue, (ulong)uint.MaxValue << 32, ulong.MaxValue, 0x8000_0000_8000_0000 };
         fixed (ulong* s = scratch)
         {
-            ulong* h = s + 265;
+            ulong* h = s + Argon2Core.HintAt;
             for (int n = 0; n < 300_000; n++)
             {
                 int p = lanes[random.Next(lanes.Length)];

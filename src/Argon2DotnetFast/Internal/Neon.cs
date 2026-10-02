@@ -31,6 +31,10 @@ internal static unsafe class Neon
         Compress(previous, reference, destination, scratch, true);
     }
 
+    // This body, never the SVE2 one, so tests can compare it on a CPU where Fill forwards.
+    internal static void FillNeon(ulong* previous, ulong* reference, ulong* destination, ulong* scratch, bool xor) =>
+        Compress(previous, reference, destination, scratch, xor);
+
     // The row pass reads previous ^ reference straight into registers and keeps a copy in saved;
     // the column pass writes destination = state ^ saved. Every row is read before any column is
     // written, so reference and destination may be the same block.

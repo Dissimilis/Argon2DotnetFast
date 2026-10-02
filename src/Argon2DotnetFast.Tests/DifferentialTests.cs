@@ -17,7 +17,7 @@ public class DifferentialTests
         for (int i = 0; i < 2000; i++)
         {
             Case c = Case.Random(random, maxLanes: 6, versions: true);
-            Assert.True(c.Ours(i).AsSpan().SequenceEqual(BouncyCastle(c)), c.ToString());
+            AssertSameTag(BouncyCastle(c), c.Ours(i), c);
         }
     }
 
@@ -38,7 +38,7 @@ public class DifferentialTests
             {
                 Parameters = new Argon2Parameters(type, memoryKiB, 2, 1 + random.Next(2), 32, version),
             };
-            Assert.True(c.Ours(memoryKiB).AsSpan().SequenceEqual(BouncyCastle(c)), c.ToString());
+            AssertSameTag(BouncyCastle(c), c.Ours(memoryKiB), c);
         }
     }
 
@@ -64,7 +64,7 @@ public class DifferentialTests
                 });
             byte[] expected = algorithm.DeriveBytes(password, salt, tagLength);
 
-            Assert.True(Argon2.Hash(parameters, password, salt).AsSpan().SequenceEqual(expected), parameters.ToString());
+            AssertSameTag(expected, Argon2.Hash(parameters, password, salt), parameters);
         }
     }
 
@@ -92,8 +92,14 @@ public class DifferentialTests
             if (c.AssociatedData.Length > 0) konscious.AssociatedData = c.AssociatedData;
             byte[] expected = konscious.GetBytes(c.Parameters.OutputLength);
 
-            Assert.True(c.Ours(i).AsSpan().SequenceEqual(expected), c.ToString());
+            AssertSameTag(expected, c.Ours(i), c);
         }
+    }
+
+    private static void AssertSameTag(byte[] oracle, byte[] ours, object context)
+    {
+        string expected = Convert.ToHexString(oracle), actual = Convert.ToHexString(ours);
+        Assert.True(expected == actual, $"{context}\noracle {expected}\nours   {actual}");
     }
 
     internal static byte[] BouncyCastle(Case c)

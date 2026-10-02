@@ -1,9 +1,12 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Argon2DotnetFast.Internal;
+using Xunit.Abstractions;
 
 namespace Argon2DotnetFast.Tests;
 
-public class AssetTests
+public class AssetTests(ITestOutputHelper output)
 {
     // Fails if a run meant for one library build loaded the other.
     [Fact]
@@ -29,5 +32,17 @@ public class AssetTests
     {
         byte[]? token = typeof(Argon2).Assembly.GetName().GetPublicKeyToken();
         Assert.Equal("6321ed566a278b44", Convert.ToHexString(token ?? []).ToLowerInvariant());
+    }
+
+    // Writes the body the dispatch picked to the test log; hosted runners change CPUs without
+    // notice. A job that sets an ISA knob also sets ARGON2_EXPECTED_KERNEL, because a knob the
+    // runtime ignores fails silently.
+    [Fact]
+    public void WritesTheKernelToTheLog()
+    {
+        output.WriteLine($"Kernel.Name {Kernel.Name}, {RuntimeInformation.ProcessArchitecture}, " +
+            $"{RuntimeInformation.FrameworkDescription}, {Environment.ProcessorCount} CPUs");
+        if (Environment.GetEnvironmentVariable("ARGON2_EXPECTED_KERNEL") is { Length: > 0 } expected)
+            Assert.Equal(expected, Kernel.Name);
     }
 }

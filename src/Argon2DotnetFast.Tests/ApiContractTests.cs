@@ -26,6 +26,8 @@ public class ApiContractTests
         Assert.True(Argon2.NeedsRehash(encoded, m32 with { OutputLength = 16 }));
         Assert.True(Argon2.NeedsRehash(encoded, m32 with { Iterations = 2 }));
         Assert.True(Argon2.NeedsRehash(encoded, m32 with { Parallelism = 2 }));
+        Assert.True(Argon2.NeedsRehash(encoded, m32 with { Type = Argon2Type.I }));
+        Assert.True(Argon2.NeedsRehash(encoded, m32 with { Version = Argon2Version.V10 }));
     }
 
     [Fact]
@@ -155,10 +157,15 @@ public class ApiContractTests
     {
         string valid = Argon2.Encode(Small, Salt, Argon2.Hash(Small, Password, Salt));
         Assert.StartsWith("$argon2id$v=19$m=64,t=2,p=2$AgICAgICAgICAgICAgICAg$", valid);
+        // A 32-byte tag is 43 digits, and the last one carries two unused bits, which must be zero.
+        const string Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        Assert.Equal(0, Digits.IndexOf(valid[^1]) & 3);
+        string tagTrailingBits = valid[..^1] + Digits[Digits.IndexOf(valid[^1]) | 1];
 
         string[] malformed =
         {
             "",
+            "#" + valid[1..],
             valid + "\0",
             valid + "$",
             valid.Replace("$argon2id$", "$Argon2id$"),
@@ -170,9 +177,22 @@ public class ApiContractTests
             valid.Replace("m=64,", "m=064,"),
             valid.Replace("m=64,", "m=+64,"),
             valid.Replace("m=64,", "m= 64,"),
+            valid.Replace("m=64,", "x=64,"),
+            valid.Replace(",t=2,", ",x=2,"),
+            valid.Replace(",p=2$", ",x=2$"),
             valid.Replace("AgICAgICAgICAgICAgICAg$", "AgICAgICAgICAgICAgICAg==$"),
             valid.Replace("AgICAgICAgICAgICAgICAg$", "AgICAgICAgICAgICAgICAh$"),
             valid.Replace("AgICAgICAgICAgICAgICAg$", "$"),
+            valid + "=",
+            tagTrailingBits,
+            valid[..(valid.LastIndexOf('$') + 1)],
+            // The decoding failures in phc-winner src/test.c.
+            "$argon2i$m=65536,t=2,p=1c29tZXNhbHQ$9sTbSlTio3Biev89thdrlKKiCaYsjjYVJxGAL3swxpQ",
+            "$argon2i$m=65536,t=2,p=1$c29tZXNhbHQ9sTbSlTio3Biev89thdrlKKiCaYsjjYVJxGAL3swxpQ",
+            "$argon2i$m=65536,t=2,p=1$$9sTbSlTio3Biev89thdrlKKiCaYsjjYVJxGAL3swxpQ",
+            "$argon2i$v=19$m=65536,t=2,p=1c29tZXNhbHQ$wWKIMhR9lyDFvRz9YTZweHKfbftvj+qf+YFY4NeBbtA",
+            "$argon2i$v=19$m=65536,t=2,p=1$c29tZXNhbHQwWKIMhR9lyDFvRz9YTZweHKfbftvj+qf+YFY4NeBbtA",
+            "$argon2i$v=19$m=65536,t=2,p=1$$9sTbSlTio3Biev89thdrlKKiCaYsjjYVJxGAL3swxpQ",
         };
 
         foreach (string text in malformed)
@@ -182,11 +202,29 @@ public class ApiContractTests
             Assert.Empty(salt);
             Assert.Empty(tag);
             Assert.Throws<FormatException>(() => Argon2.Verify(text, Password, Wide));
+            Assert.Throws<FormatException>(() => Argon2.NeedsRehash(text, Small));
         }
 
-        string unsupported = valid.Replace("$v=19$", "$v=20$");
-        Assert.False(Argon2.TryParse(unsupported, out _, out _, out _));
-        Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.Verify(unsupported, Password, Wide));
+        // Well formed, with a value out of range: the version, a zero cost, a number past int that
+        // would wrap around to a valid cost, or a salt under eight bytes.
+        string[] outOfRange =
+        {
+            valid.Replace("$v=19$", "$v=20$"),
+            valid.Replace("$v=19$", "$v=0$"),
+            valid.Replace("m=64,", "m=0,"),
+            valid.Replace(",t=2,", ",t=0,"),
+            valid.Replace(",p=2$", ",p=0$"),
+            valid.Replace("m=64,", "m=4294967360,"),
+            valid.Replace(",t=2,", ",t=4294967298,"),
+            valid.Replace(",p=2$", ",p=4294967298$"),
+            valid.Replace("AgICAgICAgICAgICAgICAg$", Convert.ToBase64String(KnownAnswerTests.Filled(7, 0x02)).TrimEnd('=') + "$"),
+        };
+        foreach (string text in outOfRange)
+        {
+            Assert.False(Argon2.TryParse(text, out _, out _, out _), text);
+            Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.Verify(text, Password, Wide));
+            Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.NeedsRehash(text, Small));
+        }
     }
 
     [Fact]
@@ -222,9 +260,11 @@ public class ApiContractTests
             Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.HashInto(parameters, Password, Salt, destination));
             Assert.Throws<ArgumentOutOfRangeException>(() => new Argon2Hasher(parameters));
             Assert.Throws<ArgumentOutOfRangeException>(() => parameters.BlockCount);
+            Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.Encode(parameters, Salt, new byte[32]));
         }
         Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.HashInto(Small, Password, new byte[7], destination));
         Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.HashToString(Small, Password, saltLength: 7));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.Encode(Small, new byte[7], new byte[32]));
         Assert.Throws<ArgumentOutOfRangeException>(() => Argon2.Hash(Small, Password, Salt, threads: -1));
         Assert.All(destination, b => Assert.Equal(0xAA, b));
     }
@@ -239,6 +279,7 @@ public class ApiContractTests
             Assert.Throws<ArgumentException>(() => Argon2.HashInto(Small, Password, Salt, destination));
             Assert.Throws<ArgumentException>(() => hasher.HashInto(Password, Salt, destination));
             Assert.Throws<ArgumentException>(() => Argon2.Verify(Small, Password, Salt, destination));
+            Assert.Throws<ArgumentException>(() => Argon2.Encode(Small, Salt, destination));
             Assert.All(destination, b => Assert.Equal(0xAA, b));
         }
     }

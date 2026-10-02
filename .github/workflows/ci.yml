@@ -25,6 +25,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
+    # The thread tests need four worker lanes. This holds the count on any runner.
+    env:
+      DOTNET_PROCESSOR_COUNT: 4
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,14 +49,21 @@ jobs:
     - name: Build
       run: dotnet build Argon2DotnetFast.slnx -c Release --no-restore
 
+    # Detailed output writes Kernel.Name, and the bodies compared with scalar, to the log.
     - name: Test the net10.0 library
-      run: dotnet test src/Argon2DotnetFast.Tests -c Release --no-build --blame-hang-timeout 300s
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release --no-build --blame-hang-timeout 300s --logger "console;verbosity=detailed"
 
     - name: Test the net8.0 library on the .NET 8 runtime
-      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=net8.0 --blame-hang-timeout 300s
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=net8.0 --blame-hang-timeout 300s --logger "console;verbosity=detailed"
 
     - name: Test the netstandard2.0 library
-      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=netstandard2.0 --blame-hang-timeout 300s
+      run: dotnet test src/Argon2DotnetFast.Tests -c Release -p:LibraryTarget=netstandard2.0 --blame-hang-timeout 300s --logger "console;verbosity=detailed"
+
+    # Debug turns on the library's assertions, among them FillSegment's check that the block the
+    # kernel computed for the next reference is the one ReferenceBlock picks.
+    - name: Test the net10.0 library in Debug
+      if: matrix.os == 'ubuntu-latest'
+      run: dotnet test src/Argon2DotnetFast.Tests -c Debug --blame-hang-timeout 300s
 
   pack:
     runs-on: ubuntu-latest
@@ -119,7 +129,9 @@ jobs:
 
   netstandard-consumer:
     # Nothing else runs the netstandard2.0 asset on .NET Framework, where System.Memory and the
-    # strong name actually matter. Consume the packed library from .NET Framework 4.8.
+    # strong name actually matter. Consume the packed library from .NET Framework 4.8, as a 64-bit
+    # process and again as a 32-bit one: every other job is 64-bit, and only the 32-bit JIT takes
+    # Scalar.Add's IntPtr.Size == 4 branch.
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -133,7 +145,7 @@ jobs:
         global-json-file: global.json
         cache: false
 
-    - name: Pack, then hash and verify from .NET Framework 4.8
+    - name: Pack, then hash and verify from .NET Framework 4.8, 64-bit and 32-bit
       shell: bash
       run: |
         set -e
@@ -169,8 +181,11 @@ jobs:
 
         static class Program
         {
-            static int Main()
+            static int Main(string[] args)
             {
+                int bits = IntPtr.Size * 8;
+                if (args.Length > 0 && args[0] != bits.ToString()) { Console.Error.WriteLine("ran " + bits + "-bit, expected " + args[0]); return 1; }
+
                 // RFC 9106 section 5.3, Argon2id version 0x13.
                 byte[] password = Enumerable.Repeat((byte)0x01, 32).ToArray();
                 byte[] salt = Enumerable.Repeat((byte)0x02, 16).ToArray();
@@ -196,16 +211,26 @@ jobs:
                 if (!Argon2.Verify(encoded.AsSpan(), "correct horse battery staple".AsSpan(), limits)) { Console.Error.WriteLine("verify failed"); return 1; }
                 if (Argon2.Verify(encoded.AsSpan(), "wrong password".AsSpan(), limits)) { Console.Error.WriteLine("wrong password verified"); return 1; }
 
-                Console.WriteLine("ok: " + typeof(Argon2).Assembly.FullName);
+                Console.WriteLine("ok, " + bits + "-bit: " + typeof(Argon2).Assembly.FullName);
                 return 0;
             }
         }
         PROG
         dotnet build -c Release
-        ./bin/Release/net48/ns20.exe
+        ./bin/Release/net48/ns20.exe 64
+        dotnet build -c Release -p:Platform=x86 -p:PlatformTarget=x86
+        ./bin/x86/Release/net48/ns20.exe 32
 
   native-aot:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: ubuntu-latest
+          rid: linux-x64
+        - os: ubuntu-24.04-arm
+          rid: linux-arm64
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -218,6 +243,10 @@ jobs:
         global-json-file: global.json
         cache: false
 
+    # Native AOT links with clang; install it on an image that lacks it.
+    - name: Check the native toolchain
+      run: command -v clang || { sudo apt-get update && sudo apt-get install -y clang zlib1g-dev; }
+
     - name: Publish a Native AOT app that hashes and verifies
       run: |
         set -e
@@ -225,6 +254,8 @@ jobs:
         dotnet new console -n AotSmoke -o . --force > /dev/null
         dotnet add AotSmoke.csproj reference "$GITHUB_WORKSPACE/src/Argon2DotnetFast/Argon2DotnetFast.csproj" > /dev/null
         cat > Program.cs <<'EOF'
+        using System.Diagnostics.CodeAnalysis;
+        using System.Reflection;
         using Argon2DotnetFast;
 
         // RFC 9106 section 5.3, Argon2id version 0x13.
@@ -250,10 +281,17 @@ jobs:
         if (!Argon2.Verify(encoded, "correct horse battery staple", limits)) { Console.Error.WriteLine("verify failed"); return 1; }
         if (Argon2.Verify(encoded, "wrong password", limits)) { Console.Error.WriteLine("wrong password verified"); return 1; }
 
-        Console.WriteLine($"ok: {encoded}");
+        // A publish that folded every IsSupported to false would still match the vector, on scalar.
+        Console.WriteLine($"ok: kernel {KernelName()}, {encoded}");
         return 0;
+
+        // Kernel is internal; the attribute keeps its Name property through trimming.
+        [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicProperties, "Argon2DotnetFast.Internal.Kernel", "Argon2DotnetFast")]
+        static string KernelName() =>
+            (string)Type.GetType("Argon2DotnetFast.Internal.Kernel, Argon2DotnetFast", throwOnError: true)!
+                .GetProperty("Name", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         EOF
         sed -i 's#<PropertyGroup>#<PropertyGroup><PublishAot>true</PublishAot><InvariantGlobalization>true</InvariantGlobalization>#' AotSmoke.csproj
-        dotnet publish -c Release -r linux-x64 -o out
+        dotnet publish -c Release -r ${{ matrix.rid }} -o out
         ./out/AotSmoke
         test ! -e out/Argon2DotnetFast.dll

@@ -26,6 +26,14 @@
     <IntermediateOutputPath>obj\$(Configuration)-$(LibraryTarget)\</IntermediateOutputPath>
   </PropertyGroup>
 
+  <!-- The SIMD bodies are compiled into the net8.0 and net10.0 assets only, the SVE2 body into net10.0. -->
+  <PropertyGroup Condition="'$(LibraryTarget)' != 'netstandard2.0'">
+    <DefineConstants>$(DefineConstants);LIBRARY_BODIES</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(LibraryTarget)' == 'net10.0'">
+    <DefineConstants>$(DefineConstants);LIBRARY_SVE2</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>LibraryTarget</_Parameter1>

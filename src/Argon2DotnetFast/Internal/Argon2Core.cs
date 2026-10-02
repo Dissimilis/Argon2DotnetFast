@@ -17,11 +17,17 @@ internal sealed class Argon2Core : ISliceWork
     // Words 264-273 carry the next block's reference to the kernel: 264 its address when known in
     // advance; 265 the next block's index in the segment, or 0 for none; 266-272 the rest of the
     // geometry NextReference needs; 273 the address the kernel computed, for the debug check.
-    private const int NextAt = 264, HintAt = 265, AddressesAt = 384, InputAt = 512, ZeroAt = 640;
+    internal const int NextAt = 264, HintAt = 265, CheckAt = HintAt + 8;
+    private const int AddressesAt = 384, InputAt = 512, ZeroAt = 640;
     internal const int ScratchWords = 768;
 
-    // Test hook: runs after each segment, so a test can make a hash fail partway.
+    // Test hooks. SegmentFilled runs on the caller after each segment, so a test can make a hash fail
+    // partway; ShareStarted runs on each thread as it starts its share of a slice.
     internal Action<int>? SegmentFilled;
+    internal Action<int>? ShareStarted;
+
+    // Execution threads, including the caller, that the last hash ran on. For the tests.
+    internal int ThreadsUsed { get; private set; }
 
     // The slice that RunShare fills, set by Hash before the lanes start.
     private int currentPass, currentSlice;
@@ -41,6 +47,7 @@ internal sealed class Argon2Core : ISliceWork
     {
         Initialize(password, salt, secret, associatedData);
         int count = lanes is null ? 1 : Math.Min(Math.Min(threads, lanes.Count), parameters.Parallelism);
+        ThreadsUsed = count;
         int segment = 0;
         for (int pass = 0; pass < parameters.Iterations; pass++)
             for (int slice = 0; slice < 4; slice++)
@@ -63,6 +70,7 @@ internal sealed class Argon2Core : ISliceWork
 
     void ISliceWork.RunShare(int thread, int threads)
     {
+        ShareStarted?.Invoke(thread);
         Span<ulong> scratch = arena.Scratch(thread);
         for (int lane = thread; lane < parameters.Parallelism; lane += threads)
             FillSegment(currentPass, currentSlice, lane, scratch);
@@ -133,7 +141,7 @@ internal sealed class Argon2Core : ISliceWork
         scratch[HintAt + 5] = (ulong)laneLength;
         scratch[HintAt + 6] = (ulong)(pass == 0 || slice == 3 ? 0 : (slice + 1) * segmentLength);
         scratch[HintAt + 7] = (ulong)arena.BlockPointer(0);
-        scratch[HintAt + 8] = 0;
+        scratch[CheckAt] = 0;
         if (independent && start == 2) NextAddresses(zero, input, addresses, scratch);
         // On the data-independent path the next block's reference is found one block early, so the
         // kernel can start fetching it; -1 where the next address block does not exist yet.
@@ -154,7 +162,7 @@ internal sealed class Argon2Core : ISliceWork
             else
             {
                 flat = ReferenceBlock(pass, slice, lane, i, arena.Block(previous)[0]);
-                Debug.Assert(scratch[HintAt + 8] == 0 || scratch[HintAt + 8] == (ulong)arena.BlockPointer(flat));
+                Debug.Assert(scratch[CheckAt] == 0 || scratch[CheckAt] == (ulong)arena.BlockPointer(flat));
                 scratch[HintAt] = i + 1 < segmentLength ? (ulong)(i + 1) : 0UL;
             }
             scratch[NextAt] = (ulong)arena.BlockPointer(carried >= 0 ? carried : previous);
