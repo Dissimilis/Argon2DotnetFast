@@ -349,6 +349,8 @@ In a 32-bit process the scalar body writes the BlaMka product as one 32-by-32-bi
 
 Every vector body starts loading the next block's reference while the current block is still being compressed. SVE2 uses `System.Runtime.Intrinsics.Arm.Sve2`, which .NET 10 marks experimental and .NET 8 does not have; other ARM64 CPUs, SVE2 at a wider vector length included, and every ARM64 CPU on .NET 8 run the NEON body.
 
+Native AOT compiles for a fixed instruction set, and its default for x64 has no AVX2, so a published app runs the scalar body there. The tags are the same; hashing is slower. Set `<IlcInstructionSet>` in the app's project file: `x86-64-v3` gives the AVX2 body and `x86-64-v4` the AVX-512VL body. An app built for `x86-64-v4` stops at startup on a CPU without AVX-512, so `x86-64-v3` is the safer choice for an app that runs on machines you don't control. On ARM64 the default includes NEON, and the NEON body runs, also on CPUs that have SVE2.
+
 On Linux the .NET 8 and .NET 10 assemblies ask for transparent huge pages for any arena of 2 MiB or more, through libc's `madvise`, since a random 1 KiB block in a 64 MiB arena of 4 KiB pages misses the TLB almost every time. A host that refuses keeps small pages. On x64 Linux with glibc it wipes the arena's blocks with non-temporal stores, because glibc's `memset` reads every line before it writes it at these sizes.
 
 ## Building from source
