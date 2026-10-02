@@ -10,7 +10,7 @@ namespace Argon2DotnetFast.Internal;
 
 // The NEON body with SVE2 instructions where they measured faster, 6 chains in flight
 // (3+3+2 rounds per iteration of each pass).
-// xar fuses the eor in front of the rotates by 63, 24 and 16.
+// xar fuses the eor in front of every rotate (ARM-73).
 // The next block's reference is prefetched: at the top when FillSegment already knows it,
 // and otherwise as soon as the first column iteration has made word 0 of this block final.
 // At the 128-bit vector length .NET 10 uses, a Vector<ulong> and a Vector128<ulong> are the
@@ -138,12 +138,9 @@ internal static unsafe class Sve2Body
             a0 = BlaMka(a0, b0); a1 = BlaMka(a1, b1);
             e0 = BlaMka(e0, f0); e1 = BlaMka(e1, f1);
             m0 = BlaMka(m0, n0); m1 = BlaMka(m1, n1);
-            d0 ^= a0; d1 ^= a1;
-            h0 ^= e0; h1 ^= e1;
-            p0 ^= m0; p1 ^= m1;
-            d0 = Rotate32(d0); d1 = Rotate32(d1);
-            h0 = Rotate32(h0); h1 = Rotate32(h1);
-            p0 = Rotate32(p0); p1 = Rotate32(p1);
+            d0 = Sve2.XorRotateRight(d0.AsVector(), a0.AsVector(), 32).AsVector128(); d1 = Sve2.XorRotateRight(d1.AsVector(), a1.AsVector(), 32).AsVector128();
+            h0 = Sve2.XorRotateRight(h0.AsVector(), e0.AsVector(), 32).AsVector128(); h1 = Sve2.XorRotateRight(h1.AsVector(), e1.AsVector(), 32).AsVector128();
+            p0 = Sve2.XorRotateRight(p0.AsVector(), m0.AsVector(), 32).AsVector128(); p1 = Sve2.XorRotateRight(p1.AsVector(), m1.AsVector(), 32).AsVector128();
             c0 = BlaMka(c0, d0); c1 = BlaMka(c1, d1);
             g0 = BlaMka(g0, h0); g1 = BlaMka(g1, h1);
             o0 = BlaMka(o0, p0); o1 = BlaMka(o1, p1);
@@ -179,12 +176,9 @@ internal static unsafe class Sve2Body
             a0 = BlaMka(a0, p00); a1 = BlaMka(a1, p01);
             e0 = BlaMka(e0, p10); e1 = BlaMka(e1, p11);
             m0 = BlaMka(m0, p20); m1 = BlaMka(m1, p21);
-            q00 ^= a0; q01 ^= a1;
-            q10 ^= e0; q11 ^= e1;
-            q20 ^= m0; q21 ^= m1;
-            q00 = Rotate32(q00); q01 = Rotate32(q01);
-            q10 = Rotate32(q10); q11 = Rotate32(q11);
-            q20 = Rotate32(q20); q21 = Rotate32(q21);
+            q00 = Sve2.XorRotateRight(q00.AsVector(), a0.AsVector(), 32).AsVector128(); q01 = Sve2.XorRotateRight(q01.AsVector(), a1.AsVector(), 32).AsVector128();
+            q10 = Sve2.XorRotateRight(q10.AsVector(), e0.AsVector(), 32).AsVector128(); q11 = Sve2.XorRotateRight(q11.AsVector(), e1.AsVector(), 32).AsVector128();
+            q20 = Sve2.XorRotateRight(q20.AsVector(), m0.AsVector(), 32).AsVector128(); q21 = Sve2.XorRotateRight(q21.AsVector(), m1.AsVector(), 32).AsVector128();
             c1 = BlaMka(c1, q00); c0 = BlaMka(c0, q01);
             g1 = BlaMka(g1, q10); g0 = BlaMka(g0, q11);
             o1 = BlaMka(o1, q20); o0 = BlaMka(o0, q21);
@@ -290,10 +284,8 @@ internal static unsafe class Sve2Body
 
             a0 = BlaMka(a0, b0); a1 = BlaMka(a1, b1);
             e0 = BlaMka(e0, f0); e1 = BlaMka(e1, f1);
-            d0 ^= a0; d1 ^= a1;
-            h0 ^= e0; h1 ^= e1;
-            d0 = Rotate32(d0); d1 = Rotate32(d1);
-            h0 = Rotate32(h0); h1 = Rotate32(h1);
+            d0 = Sve2.XorRotateRight(d0.AsVector(), a0.AsVector(), 32).AsVector128(); d1 = Sve2.XorRotateRight(d1.AsVector(), a1.AsVector(), 32).AsVector128();
+            h0 = Sve2.XorRotateRight(h0.AsVector(), e0.AsVector(), 32).AsVector128(); h1 = Sve2.XorRotateRight(h1.AsVector(), e1.AsVector(), 32).AsVector128();
             c0 = BlaMka(c0, d0); c1 = BlaMka(c1, d1);
             g0 = BlaMka(g0, h0); g1 = BlaMka(g1, h1);
             b0 = Sve2.XorRotateRight(b0.AsVector(), c0.AsVector(), 24).AsVector128(); b1 = Sve2.XorRotateRight(b1.AsVector(), c1.AsVector(), 24).AsVector128();
@@ -318,10 +310,8 @@ internal static unsafe class Sve2Body
 
             a0 = BlaMka(a0, p00); a1 = BlaMka(a1, p01);
             e0 = BlaMka(e0, p10); e1 = BlaMka(e1, p11);
-            q00 ^= a0; q01 ^= a1;
-            q10 ^= e0; q11 ^= e1;
-            q00 = Rotate32(q00); q01 = Rotate32(q01);
-            q10 = Rotate32(q10); q11 = Rotate32(q11);
+            q00 = Sve2.XorRotateRight(q00.AsVector(), a0.AsVector(), 32).AsVector128(); q01 = Sve2.XorRotateRight(q01.AsVector(), a1.AsVector(), 32).AsVector128();
+            q10 = Sve2.XorRotateRight(q10.AsVector(), e0.AsVector(), 32).AsVector128(); q11 = Sve2.XorRotateRight(q11.AsVector(), e1.AsVector(), 32).AsVector128();
             c1 = BlaMka(c1, q00); c0 = BlaMka(c0, q01);
             g1 = BlaMka(g1, q10); g0 = BlaMka(g0, q11);
             p00 = Sve2.XorRotateRight(p00.AsVector(), c1.AsVector(), 24).AsVector128(); p01 = Sve2.XorRotateRight(p01.AsVector(), c0.AsVector(), 24).AsVector128();
@@ -384,12 +374,9 @@ internal static unsafe class Sve2Body
             a0 = BlaMka(a0, b0); a1 = BlaMka(a1, b1);
             e0 = BlaMka(e0, f0); e1 = BlaMka(e1, f1);
             m0 = BlaMka(m0, n0); m1 = BlaMka(m1, n1);
-            d0 ^= a0; d1 ^= a1;
-            h0 ^= e0; h1 ^= e1;
-            p0 ^= m0; p1 ^= m1;
-            d0 = Rotate32(d0); d1 = Rotate32(d1);
-            h0 = Rotate32(h0); h1 = Rotate32(h1);
-            p0 = Rotate32(p0); p1 = Rotate32(p1);
+            d0 = Sve2.XorRotateRight(d0.AsVector(), a0.AsVector(), 32).AsVector128(); d1 = Sve2.XorRotateRight(d1.AsVector(), a1.AsVector(), 32).AsVector128();
+            h0 = Sve2.XorRotateRight(h0.AsVector(), e0.AsVector(), 32).AsVector128(); h1 = Sve2.XorRotateRight(h1.AsVector(), e1.AsVector(), 32).AsVector128();
+            p0 = Sve2.XorRotateRight(p0.AsVector(), m0.AsVector(), 32).AsVector128(); p1 = Sve2.XorRotateRight(p1.AsVector(), m1.AsVector(), 32).AsVector128();
             c0 = BlaMka(c0, d0); c1 = BlaMka(c1, d1);
             g0 = BlaMka(g0, h0); g1 = BlaMka(g1, h1);
             o0 = BlaMka(o0, p0); o1 = BlaMka(o1, p1);
@@ -425,12 +412,9 @@ internal static unsafe class Sve2Body
             a0 = BlaMka(a0, p00); a1 = BlaMka(a1, p01);
             e0 = BlaMka(e0, p10); e1 = BlaMka(e1, p11);
             m0 = BlaMka(m0, p20); m1 = BlaMka(m1, p21);
-            q00 ^= a0; q01 ^= a1;
-            q10 ^= e0; q11 ^= e1;
-            q20 ^= m0; q21 ^= m1;
-            q00 = Rotate32(q00); q01 = Rotate32(q01);
-            q10 = Rotate32(q10); q11 = Rotate32(q11);
-            q20 = Rotate32(q20); q21 = Rotate32(q21);
+            q00 = Sve2.XorRotateRight(q00.AsVector(), a0.AsVector(), 32).AsVector128(); q01 = Sve2.XorRotateRight(q01.AsVector(), a1.AsVector(), 32).AsVector128();
+            q10 = Sve2.XorRotateRight(q10.AsVector(), e0.AsVector(), 32).AsVector128(); q11 = Sve2.XorRotateRight(q11.AsVector(), e1.AsVector(), 32).AsVector128();
+            q20 = Sve2.XorRotateRight(q20.AsVector(), m0.AsVector(), 32).AsVector128(); q21 = Sve2.XorRotateRight(q21.AsVector(), m1.AsVector(), 32).AsVector128();
             c1 = BlaMka(c1, q00); c0 = BlaMka(c0, q01);
             g1 = BlaMka(g1, q10); g0 = BlaMka(g0, q11);
             o1 = BlaMka(o1, q20); o0 = BlaMka(o0, q21);
@@ -518,10 +502,8 @@ internal static unsafe class Sve2Body
 
             a0 = BlaMka(a0, b0); a1 = BlaMka(a1, b1);
             e0 = BlaMka(e0, f0); e1 = BlaMka(e1, f1);
-            d0 ^= a0; d1 ^= a1;
-            h0 ^= e0; h1 ^= e1;
-            d0 = Rotate32(d0); d1 = Rotate32(d1);
-            h0 = Rotate32(h0); h1 = Rotate32(h1);
+            d0 = Sve2.XorRotateRight(d0.AsVector(), a0.AsVector(), 32).AsVector128(); d1 = Sve2.XorRotateRight(d1.AsVector(), a1.AsVector(), 32).AsVector128();
+            h0 = Sve2.XorRotateRight(h0.AsVector(), e0.AsVector(), 32).AsVector128(); h1 = Sve2.XorRotateRight(h1.AsVector(), e1.AsVector(), 32).AsVector128();
             c0 = BlaMka(c0, d0); c1 = BlaMka(c1, d1);
             g0 = BlaMka(g0, h0); g1 = BlaMka(g1, h1);
             b0 = Sve2.XorRotateRight(b0.AsVector(), c0.AsVector(), 24).AsVector128(); b1 = Sve2.XorRotateRight(b1.AsVector(), c1.AsVector(), 24).AsVector128();
@@ -546,10 +528,8 @@ internal static unsafe class Sve2Body
 
             a0 = BlaMka(a0, p00); a1 = BlaMka(a1, p01);
             e0 = BlaMka(e0, p10); e1 = BlaMka(e1, p11);
-            q00 ^= a0; q01 ^= a1;
-            q10 ^= e0; q11 ^= e1;
-            q00 = Rotate32(q00); q01 = Rotate32(q01);
-            q10 = Rotate32(q10); q11 = Rotate32(q11);
+            q00 = Sve2.XorRotateRight(q00.AsVector(), a0.AsVector(), 32).AsVector128(); q01 = Sve2.XorRotateRight(q01.AsVector(), a1.AsVector(), 32).AsVector128();
+            q10 = Sve2.XorRotateRight(q10.AsVector(), e0.AsVector(), 32).AsVector128(); q11 = Sve2.XorRotateRight(q11.AsVector(), e1.AsVector(), 32).AsVector128();
             c1 = BlaMka(c1, q00); c0 = BlaMka(c0, q01);
             g1 = BlaMka(g1, q10); g0 = BlaMka(g0, q11);
             p00 = Sve2.XorRotateRight(p00.AsVector(), c1.AsVector(), 24).AsVector128(); p01 = Sve2.XorRotateRight(p01.AsVector(), c0.AsVector(), 24).AsVector128();
@@ -582,16 +562,15 @@ internal static unsafe class Sve2Body
         }
     }
 
-    // x + y + 2 * lo32(x) * lo32(y) per 64-bit lane: two umlal in series onto x + y.
+    // x + y + 2 * lo32(x) * lo32(y) per 64-bit lane: one umullb of the even 32-bit elements, which
+    // are the low halves, so nothing is narrowed and no accumulator is tied to x's register.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector128<ulong> BlaMka(Vector128<ulong> x, Vector128<ulong> y)
     {
-        Vector64<uint> lx = AdvSimd.ExtractNarrowingLower(x), ly = AdvSimd.ExtractNarrowingLower(y);
-        Vector128<ulong> sum = AdvSimd.MultiplyWideningLowerAndAdd(AdvSimd.Add(x, y), lx, ly);
-        return AdvSimd.MultiplyWideningLowerAndAdd(sum, lx, ly);
+        Vector128<ulong> product = Sve2.MultiplyWideningEven(
+            Vector.AsVectorUInt32(x.AsVector()), Vector.AsVectorUInt32(y.AsVector())).AsVector128();
+        return AdvSimd.Add(AdvSimd.Add(x, y), AdvSimd.Add(product, product));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector128<ulong> Rotate32(Vector128<ulong> x) => AdvSimd.ReverseElement32(x);
 }
 #endif
