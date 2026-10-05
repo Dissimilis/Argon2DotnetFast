@@ -144,6 +144,7 @@ internal static unsafe class Avx2Body
             Avx.Store(pw + 24, Avx2.Permute4x64(c01d, 0x4E));
             Avx.Store(pw + 28, Avx2.Permute4x64(d01d, 0x39));
         }
+        byte* following = null;
         for (int k = 0; k < 4; k++)
         {
             nint column = 4 * k;
@@ -180,8 +181,8 @@ internal static unsafe class Avx2Body
             c01 = BlaMka(c01, d01);
             b01 ^= c01;
             b01 = Avx2.ShiftRightLogical(b01, 63) ^ (b01 + b01);
-            Vector256<ulong> b00d = Swap(Blend(b00, b01)), b01d = Swap(Blend(b01, b00));
-            Vector256<ulong> d00d = Swap(Blend(d01, d00)), d01d = Swap(Blend(d00, d01));
+            Vector256<ulong> b00d = Pair(b00, b01), b01d = Pair(b01, b00);
+            Vector256<ulong> d00d = Pair(d01, d00), d01d = Pair(d00, d01);
             a00 = BlaMka(a00, b00d);
             d00d ^= a00;
             d00d = Avx2.Shuffle(d00d.AsUInt32(), 0xB1).AsUInt64();
@@ -208,16 +209,17 @@ internal static unsafe class Avx2Body
             b01d = Avx2.ShiftRightLogical(b01d, 63) ^ (b01d + b01d);
             Avx.Store(pd, a00 ^ Avx.LoadVector256(ps));
             Avx.Store(pd + 16, a01 ^ Avx.LoadVector256(ps + 16));
-            Avx.Store(pd + 32, Swap(Blend(b01d, b00d)) ^ Avx.LoadVector256(ps + 32));
-            Avx.Store(pd + 48, Swap(Blend(b00d, b01d)) ^ Avx.LoadVector256(ps + 48));
+            Avx.Store(pd + 32, Pair(b01d, b00d) ^ Avx.LoadVector256(ps + 32));
+            Avx.Store(pd + 48, Pair(b00d, b01d) ^ Avx.LoadVector256(ps + 48));
             Avx.Store(pd + 64, c00 ^ Avx.LoadVector256(ps + 64));
             Avx.Store(pd + 80, c01 ^ Avx.LoadVector256(ps + 80));
-            Avx.Store(pd + 96, Swap(Blend(d00d, d01d)) ^ Avx.LoadVector256(ps + 96));
-            Avx.Store(pd + 112, Swap(Blend(d01d, d00d)) ^ Avx.LoadVector256(ps + 112));
+            Avx.Store(pd + 96, Pair(d00d, d01d) ^ Avx.LoadVector256(ps + 96));
+            Avx.Store(pd + 112, Pair(d01d, d00d) ^ Avx.LoadVector256(ps + 112));
             if (k == 0 && scratch[265] != 0)
             {
-                // Word 0 of this block is final, so the next block's reference is known.
-                byte* following = (byte*)Argon2Core.NextReference(scratch, destination[0]);
+                // Word 0 of this block is final, so the next block's reference is known. Lines 0-7 now,
+                // 8-15 one iteration later: Haswell has about ten L1 miss buffers.
+                following = (byte*)Argon2Core.NextReference(scratch, destination[0]);
                 Sse.Prefetch0(following);
                 Sse.Prefetch0(following + 64);
                 Sse.Prefetch0(following + 128);
@@ -226,6 +228,9 @@ internal static unsafe class Avx2Body
                 Sse.Prefetch0(following + 320);
                 Sse.Prefetch0(following + 384);
                 Sse.Prefetch0(following + 448);
+            }
+            else if (k == 1 && scratch[265] != 0)
+            {
                 Sse.Prefetch0(following + 512);
                 Sse.Prefetch0(following + 576);
                 Sse.Prefetch0(following + 640);
@@ -246,13 +251,9 @@ internal static unsafe class Avx2Body
         return x + y + (m + m);
     }
 
-    // Lanes 0 and 2 from y, lanes 1 and 3 from x.
+    // The high word of x, then the low word of y, in each 128-bit half: one vpalignr.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> Blend(Vector256<ulong> x, Vector256<ulong> y) =>
-        Avx2.Blend(x.AsUInt32(), y.AsUInt32(), 0x33).AsUInt64();
-
-    // Swaps the two words of each 128-bit half.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> Swap(Vector256<ulong> x) => Avx2.Shuffle(x.AsUInt32(), 0x4E).AsUInt64();
+    private static Vector256<ulong> Pair(Vector256<ulong> x, Vector256<ulong> y) =>
+        Avx2.AlignRight(y.AsByte(), x.AsByte(), 8).AsUInt64();
 }
 #endif
