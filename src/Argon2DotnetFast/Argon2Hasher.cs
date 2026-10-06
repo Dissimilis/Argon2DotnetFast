@@ -8,7 +8,7 @@ namespace Argon2DotnetFast;
 /// worker threads that fill lanes alongside the caller; p=1 starts none. The thread count never changes the tag.
 /// A call that overlaps another call on the same instance throws <see cref="InvalidOperationException"/>.
 /// </remarks>
-public sealed class Argon2Hasher : IDisposable
+public sealed partial class Argon2Hasher : IDisposable
 {
     private readonly Arena arena;
     private readonly Argon2Core core;

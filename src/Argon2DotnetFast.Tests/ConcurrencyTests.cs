@@ -46,6 +46,8 @@ public class ConcurrencyTests
             Assert.Throws<InvalidOperationException>(() => hasher.HashToString(password));
             Assert.Throws<InvalidOperationException>(() => hasher.Verify(encoded, password, limits));
             Assert.Throws<InvalidOperationException>(() => hasher.Verify(encoded, "password", limits));
+            Assert.Throws<InvalidOperationException>(() => hasher.VerifyAndUpgrade(encoded, password, limits));
+            Assert.Throws<InvalidOperationException>(() => hasher.VerifyAndUpgrade(encoded, "password", limits));
         }
         finally { release.Set(); }
         Assert.True(worker.Join(TimeSpan.FromSeconds(60)), "the worker's hash did not finish");
