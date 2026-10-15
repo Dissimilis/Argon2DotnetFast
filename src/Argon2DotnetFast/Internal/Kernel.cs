@@ -12,7 +12,7 @@ internal static unsafe class Kernel
 
 #if NET10_0_OR_GREATER
     internal static string Name =>
-        UseNeon ? (Sve2Body.IsSupported ? "sve2" : "neon") : UseAvx512Vl ? "avx512vl" : UseAvx2 ? "avx2" : "scalar";
+        UseNeon ? (Sve2Body.IsSupported ? "sve2" : NeonSve.IsSupported ? "neon-sve" : "neon") : UseAvx512Vl ? "avx512vl" : UseAvx2 ? "avx2" : "scalar";
 #else
     internal static string Name =>
         UseNeon ? "neon" : UseAvx512Vl ? "avx512vl" : UseAvx2 ? "avx2" : "scalar";

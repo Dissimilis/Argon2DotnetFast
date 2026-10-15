@@ -31,6 +31,8 @@ public sealed unsafe class KernelBodyTests(ITestOutputHelper output)
             bodies.Add(("avx2", (p, r, d, s, xor) => { if (xor) Avx2Body.FillXor(p, r, d, s); else Avx2Body.Fill(p, r, d, s); }));
         if (Neon.IsSupported) bodies.Add(("neon", Neon.FillNeon));
 #if LIBRARY_SVE2
+        if (NeonSve.IsSupported)
+            bodies.Add(("neon-sve", (p, r, d, s, xor) => { if (xor) NeonSve.FillXor(p, r, d, s); else NeonSve.Fill(p, r, d, s); }));
         if (Sve2Body.IsSupported)
             bodies.Add(("sve2", (p, r, d, s, xor) => { if (xor) Sve2Body.FillXor(p, r, d, s); else Sve2Body.Fill(p, r, d, s); }));
 #endif
