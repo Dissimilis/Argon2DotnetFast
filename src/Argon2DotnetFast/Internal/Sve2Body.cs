@@ -35,22 +35,44 @@ internal static unsafe class Sve2Body
         // path), otherwise previous, which is in L1.
         ulong* next = (ulong*)scratch[264];
         Vector<ulong> one = Sve.CreateTrueMaskUInt64(SveMaskPattern.VectorCount1);
-        Sve.Prefetch64Bit(one, next, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 8, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 16, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 24, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 32, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 40, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 48, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 56, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 64, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 72, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 80, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 88, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 96, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 104, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 112, SvePrefetchType.LoadL1Temporal);
-        Sve.Prefetch64Bit(one, next + 120, SvePrefetchType.LoadL1Temporal);
+        if (next != previous)
+        {
+            Sve.Prefetch64Bit(one, next, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 8, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 16, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 24, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 32, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 40, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 48, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 56, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 64, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 72, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 80, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 88, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 96, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 104, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 112, SvePrefetchType.LoadL2Temporal);
+            Sve.Prefetch64Bit(one, next + 120, SvePrefetchType.LoadL2Temporal);
+        }
+        else
+        {
+            Sve.Prefetch64Bit(one, next, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 8, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 16, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 24, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 32, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 40, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 48, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 56, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 64, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 72, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 80, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 88, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 96, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 104, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 112, SvePrefetchType.LoadL1Temporal);
+            Sve.Prefetch64Bit(one, next + 120, SvePrefetchType.LoadL1Temporal);
+        }
         for (int k = 0; k < 2; k++)
         {
             nint row = 48 * k;
